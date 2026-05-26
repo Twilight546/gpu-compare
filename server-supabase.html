@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据中心GPU服务器对比系统</title>
+<style>
+  :root {
+    --bg: #0a0e14; --surface: #141b22; --surface2: #1c2430; --border: #2a3441;
+    --text: #c9d1d9; --text2: #8b949e; --accent: #58a6ff; --accent2: #3fb950;
+    --warn: #d29922; --danger: #f85149; --nvidia: #76b900; --china: #ff6b6b;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; line-height:1.5; }
+  .navbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+  .navbar h1 { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+  .navbar h1 .icon { width: 28px; height: 28px; background: var(--accent); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+  .nav-actions { display: flex; gap: 8px; align-items: center; }
+  .nav-actions input { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; font-size: 13px; width: 220px; outline: none; }
+  .nav-actions input:focus { border-color: var(--accent); }
+  .badge { background: var(--accent); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+  .app { display: flex; height: calc(100vh - 56px); }
+  .sidebar { width: 260px; background: var(--surface); border-right: 1px solid var(--border); overflow-y: auto; flex-shrink: 0; padding: 12px 0; }
+  .sidebar .section-title { font-size: 11px; text-transform: uppercase; color: var(--text2); padding: 8px 16px; letter-spacing: 1px; font-weight: 600; }
+  .sidebar .gpu-item { display: flex; align-items: center; gap: 8px; padding: 7px 16px; cursor: pointer; font-size: 13px; border-left: 2px solid transparent; transition: all 0.15s; }
+  .sidebar .gpu-item:hover { background: var(--surface2); }
+  .sidebar .gpu-item.active { border-left-color: var(--accent); background: var(--surface2); color: #fff; }
+  .sidebar .gpu-item .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .dot.nvidia { background: var(--nvidia); } .dot.china { background: var(--china); }
+  .sidebar .gpu-item .cmp-toggle { margin-left: auto; font-size: 18px; color: var(--text2); cursor: pointer; width: 20px; text-align: center; }
+  .sidebar .gpu-item .cmp-toggle.active { color: var(--accent); }
+  .main { flex: 1; overflow-y: auto; padding: 24px; }
+  .cmp-bar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 24px; display: flex; align-items: center; gap: 10px; min-height: 48px; flex-wrap: wrap; }
+  .cmp-bar .label { font-size: 12px; color: var(--text2); font-weight: 600; white-space:nowrap; }
+  .cmp-tag { background: var(--surface2); border: 1px solid var(--border); border-radius: 16px; padding: 4px 10px; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+  .cmp-tag .remove { cursor: pointer; color: var(--text2); font-size: 14px; line-height: 1; }
+  .cmp-tag .remove:hover { color: var(--danger); }
+  .btn { padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); transition: all 0.15s; }
+  .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-outline { background: transparent; color: var(--text); }
+  .btn-outline:hover { background: var(--surface2); }
+  .btn-danger { background: transparent; color: var(--danger); border-color: var(--danger); }
+  .btn-danger:hover { background: var(--danger); color: #fff; }
+  .btn-sm { padding: 4px 10px; font-size: 11px; }
+  .table-container { overflow-x: auto; margin-top: 16px; border-radius: 8px; border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead { background: var(--surface); }
+  th { padding: 10px 12px; text-align: left; font-weight: 600; color: var(--text2); border-bottom: 2px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none; position: sticky; top: 0; background: var(--surface); z-index: 2; }
+  th:hover { color: var(--text); }
+  th .sort-arrow { font-size: 10px; margin-left: 4px; }
+  td { padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  tbody tr { transition: background 0.1s; }
+  tbody tr:hover { background: var(--surface2); }
+  tbody tr.selected { background: rgba(88,166,255,0.08); }
+  .gpu-name { font-weight: 600; color: #fff; cursor: pointer; }
+  .gpu-name:hover { color: var(--accent); text-decoration: underline; }
+  .tag { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .tag-nvidia { background: rgba(118,185,0,0.15); color: var(--nvidia); }
+  .tag-china { background: rgba(255,107,107,0.15); color: var(--china); }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 200; display: flex; align-items: center; justify-content: center; animation: fadeIn 0.15s; }
+  @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; width: 720px; max-width: 95vw; max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+  .modal-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; background: var(--surface); z-index: 1; }
+  .modal-header h2 { font-size: 18px; }
+  .modal-close { width: 32px; height: 32px; border-radius: 6px; border: none; background: transparent; color: var(--text2); font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .modal-close:hover { background: var(--surface2); color: #fff; }
+  .modal-body { padding: 20px; }
+  .spec-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .spec-item { background: var(--surface2); border-radius: 8px; padding: 14px; }
+  .spec-item.full { grid-column: 1 / -1; }
+  .spec-item label { font-size: 11px; color: var(--text2); display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .spec-item .value { font-size: 15px; font-weight: 600; color: #fff; }
+  .spec-item input, .spec-item textarea { width: 100%; background: var(--bg); border: 1px solid var(--border); color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 14px; font-family: inherit; margin-top: 4px; }
+  .spec-item textarea { resize: vertical; min-height: 60px; }
+  .spec-item input:focus, .spec-item textarea:focus { border-color: var(--accent); outline: none; }
+  .cmp-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-top: 16px; overflow: hidden; }
+  .cmp-panel-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .cmp-panel-header h3 { font-size: 14px; }
+  .cmp-grid { overflow-x: auto; }
+  .cmp-row { display: grid; border-bottom: 1px solid var(--border); }
+  .cmp-cell { padding: 10px 14px; font-size: 13px; border-right: 1px solid var(--border); min-width: 150px; }
+  .cmp-cell:last-child { border-right: none; }
+  .cmp-cell.header { background: var(--surface2); font-weight: 600; font-size: 12px; color: var(--text2); }
+  .cmp-cell.best { background: rgba(63,185,80,0.08); }
+  .action-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .count-info { font-size: 12px; color: var(--text2); margin-left: auto; align-self: center; }
+  .toast { position: fixed; bottom: 24px; right: 24px; z-index: 300; background: var(--accent2); color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; animation: slideUp 0.3s; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+  @keyframes slideUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+  .perf-high { color: var(--accent2); font-weight: 600; }
+  .perf-mid { color: var(--warn); }
+  .power-high { color: var(--danger); }
+  .edit-mode-indicator { position: fixed; top: 64px; right: 16px; z-index: 150; background: var(--warn); color: #000; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 700; display: none; }
+  .edit-mode-indicator.on { display: block; }
+  .dropdown { position: relative; display: inline-block; }
+  .dropdown-menu { position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; min-width: 160px; z-index: 50; display: none; box-shadow: 0 8px 24px rgba(0,0,0,0.4); overflow: hidden; }
+  .dropdown-menu.show { display: block; }
+  .dropdown-menu button { display: block; width: 100%; text-align: left; padding: 8px 14px; border: none; background: transparent; color: var(--text); font-size: 13px; cursor: pointer; }
+  .dropdown-menu button:hover { background: var(--surface); }
+  .setup-banner { padding: 16px 24px; background: var(--warn); color: #000; text-align: center; font-size: 13px; font-weight: 600; display: none; cursor: pointer; }
+  .setup-banner.show { display: block; }
+  @media (max-width: 900px) { .sidebar { display: none; } .spec-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="setup-banner" id="setupBanner">
+  ⚠️ 尚未配置 Supabase 连接信息 — 点击此处配置（填写你的 Supabase URL 和 anon key）
+</div>
+
+<nav class="navbar">
+  <h1><span class="icon">&#9881;</span> 数据中心 GPU 服务器对比系统</h1>
+  <div class="nav-actions">
+    <input type="text" id="searchInput" placeholder="搜索 GPU 型号、架构...">
+    <button class="btn btn-outline btn-sm" onclick="showSetupModal()" title="配置Supabase">&#9881; 配置</button>
+    <button class="btn btn-outline btn-sm" onclick="showAddGPUModal()" title="新增GPU">&#10133; 新增</button>
+    <button class="btn btn-outline btn-sm" onclick="toggleEditMode()" id="editBtn">&#9998; 编辑模式</button>
+    <div class="dropdown">
+      <button class="btn btn-outline btn-sm" onclick="document.getElementById('exportMenu').classList.toggle('show')">&#8615; 导出</button>
+      <div class="dropdown-menu" id="exportMenu">
+        <button onclick="exportJSON()">导出 JSON</button>
+        <button onclick="exportCSV()">导出 CSV</button>
+        <button onclick="syncFromSupabase()">从云端刷新数据</button>
+        <button onclick="resetData()" style="color:var(--danger)">恢复默认数据</button>
+      </div>
+    </div>
+    <span class="badge" id="gpuCount">...</span>
+  </div>
+</nav>
+
+<div class="cmp-bar" id="cmpBar">
+  <span class="label">&#9879; 对比栏：</span>
+  <span id="cmpTags" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"></span>
+  <span id="cmpPlaceholder" style="font-size:12px;color:var(--text2);">点击左侧 GPU 旁的 + 号添加到对比栏</span>
+  <button class="btn btn-danger btn-sm" onclick="clearCompare()" style="margin-left:auto;">清空对比</button>
+</div>
+
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main" id="mainContent">
+    <div class="action-bar">
+      <button class="btn btn-outline btn-sm" onclick="showAll()">全部</button>
+      <button class="btn btn-outline btn-sm" onclick="filterByVendor('NVIDIA')">NVIDIA</button>
+      <button class="btn btn-outline btn-sm" onclick="filterByVendor('国产')">国产 GPU</button>
+      <button class="btn btn-outline btn-sm" onclick="filterByArch('Hopper')">Hopper</button>
+      <button class="btn btn-outline btn-sm" onclick="filterByArch('Blackwell')">Blackwell</button>
+      <button class="btn btn-outline btn-sm" onclick="filterByArch('Ada')">Ada Lovelace</button>
+      <button class="btn btn-outline btn-sm" onclick="filterByArch('Ampere')">Ampere</button>
+      <span class="count-info" id="tableInfo">显示全部</span>
+    </div>
+    <div class="table-container">
+      <table id="mainTable">
+        <thead>
+          <tr>
+            <th onclick="sortTable('name')">GPU 型号 <span class="sort-arrow" id="sort-name"></span></th>
+            <th onclick="sortTable('vendor')">厂商 <span class="sort-arrow" id="sort-vendor"></span></th>
+            <th onclick="sortTable('arch')">产品架构 <span class="sort-arrow" id="sort-arch"></span></th>
+            <th onclick="sortTable('type')">产品类型 <span class="sort-arrow" id="sort-type"></span></th>
+            <th onclick="sortTable('vram')">显存 <span class="sort-arrow" id="sort-vram"></span></th>
+            <th onclick="sortTable('bandwidth')">显存带宽 <span class="sort-arrow" id="sort-bandwidth"></span></th>
+            <th>GPU互联</th>
+            <th onclick="sortTable('tdp')">TDP <span class="sort-arrow" id="sort-tdp"></span></th>
+            <th>单卡算力(FP16)</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+    <div id="cmpPanelContainer"></div>
+  </main>
+</div>
+
+<div id="modalContainer"></div>
+<div id="toastContainer"></div>
+<div class="edit-mode-indicator" id="editIndicator">&#9998; 编辑模式已开启</div>
+
+<script>
+// ==================== Supabase 配置 ====================
+const STORAGE_KEY = 'gpu_compare_supabase_config';
+let supabaseConfig = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null') || { url: 'https://xgjojrmmfijpfukuigdu.supabase.co', anonKey: 'sb_publishable_duZJNGb6fxETvLTRfT1HcA_23MwEGrE' };
+
+function isConfigured() { return supabaseConfig.url && supabaseConfig.anonKey; }
+
+function getHeaders() {
+  return {
+    'apikey': supabaseConfig.anonKey,
+    'Authorization': 'Bearer ' + supabaseConfig.anonKey,
+    'Content-Type': 'application/json',
+    'Prefer': 'return=representation'
+  };
+}
+
+// ==================== 默认数据（离线兜底）====================
+const DEFAULT_DATA = [
+  {"id":1,"vendor":"NVIDIA","name":"H20","arch":"Hopper","type":"SXM","vram":"96G HBM3","bandwidth":"4TB/s","interconnect":"NVlink 900GB/s","tdp":"400W","fp16":"INT8/FP8:296T\nFP16:148T\nTF32:59.8T","category":"nvidia"},
+  {"id":2,"vendor":"NVIDIA","name":"H200","arch":"Hopper","type":"SXM","vram":"141G HBM3e","bandwidth":"4.8TB/s","interconnect":"Nvlink 900GB/s","tdp":"700W","fp16":"FP8/INT8:1/2P*\nFP16:1/2P*\nTF32:495/989T*\nFP64:67T","category":"nvidia"},
+  {"id":3,"vendor":"NVIDIA","name":"RTX 4090","arch":"Ada","type":"PCIe","vram":"24G GDDR6x (可选48G)","bandwidth":"1TB/s","interconnect":"理论64GB/s","tdp":"450W","fp16":"FP16:165T/330T*\nTF32:82.6/165.2T*","category":"nvidia"},
+  {"id":4,"vendor":"NVIDIA","name":"RTX 4090D","arch":"Ada","type":"PCIe","vram":"24G GDDR6x","bandwidth":"1TB/s","interconnect":"理论64GB/s","tdp":"425W","fp16":"FP16:147/294T*\nTF32:73.54/147T*","category":"nvidia"},
+  {"id":5,"vendor":"NVIDIA","name":"RTX 5090","arch":"Blackwell","type":"PCIe 5.0","vram":"32G GDDR7","bandwidth":"1.8TB/s","interconnect":"PCIe 128GB/s","tdp":"575W","fp16":"FP16:210T/420T\nTF32:108T","category":"nvidia"},
+  {"id":6,"vendor":"NVIDIA","name":"5090D","arch":"Blackwell","type":"PCIe 5.0","vram":"32G GDDR7","bandwidth":"1.8TB/s","interconnect":"PCIe 128GB/s","tdp":"575W","fp16":"FP16:150/297T*\nTF32:待确认","category":"nvidia"},
+  {"id":7,"vendor":"NVIDIA","name":"H100 (SXM)","arch":"Hopper","type":"SXM","vram":"80G HBM3","bandwidth":"3.35TB/s","interconnect":"Nvlink 900GB/s","tdp":"700W","fp16":"FP8/INT8:1/2P*\nFP16:1/2P*\nTF32:495/989T*\nFP64:67T","category":"nvidia"},
+  {"id":8,"vendor":"NVIDIA","name":"H100 (PCIe)","arch":"Hopper","type":"PCIe","vram":"80G HBM3","bandwidth":"2TB/s","interconnect":"PCIe 128GB/s","tdp":"350W","fp16":"FP16:0.8/1.6P*\nTF32:378/756T*\nFP64:51T","category":"nvidia"},
+  {"id":9,"vendor":"NVIDIA","name":"H800 (SXM)","arch":"Hopper","type":"SXM","vram":"80G HBM3","bandwidth":"3.35TB/s","interconnect":"Nvlink 400GB/s","tdp":"700W","fp16":"FP16:1/2P*\nTF32:495/989T*\nFP64:1T","category":"nvidia"},
+  {"id":10,"vendor":"NVIDIA","name":"H800 (PCIe)","arch":"Hopper","type":"PCIe","vram":"80G HBM3","bandwidth":"2TB/s","interconnect":"PCIe 128GB/s","tdp":"350W","fp16":"FP16:0.8/1.6P*\nTF32:378/756T*\nFP64:0.8T","category":"nvidia"},
+  {"id":11,"vendor":"NVIDIA","name":"RTX PRO 6000","arch":"Blackwell","type":"PCIe 5.0","vram":"96G GDDR7","bandwidth":"1.6TB/s","interconnect":"PCIe 128GB/s","tdp":"600W","fp16":"FP4:2/4P*\nFP8:1/2P*\nFP16:0.5/1P*","category":"nvidia"},
+  {"id":12,"vendor":"NVIDIA","name":"A100 (SXM)","arch":"Ampere","type":"SXM","vram":"80G HBM2e","bandwidth":"2TB/s","interconnect":"PCIe 128GB/s","tdp":"400W","fp16":"FP16:0.3/0.6P*\nTF32:156/312T*\nFP64:19.5T","category":"nvidia"},
+  {"id":13,"vendor":"NVIDIA","name":"A100 (PCIe)","arch":"Ampere","type":"PCIe","vram":"80GB HBM2e","bandwidth":"2TB/s","interconnect":"PCIe 64GB/s","tdp":"300W","fp16":"FP16:0.3/0.6P*\nTF32:156/312T*\nFP64:19.5T","category":"nvidia"},
+  {"id":14,"vendor":"NVIDIA","name":"A800 (SXM)","arch":"Ampere","type":"SXM","vram":"80G HBM2e","bandwidth":"2TB/s","interconnect":"Nvlink 400GB/s","tdp":"400W","fp16":"FP16:0.3/0.6P*\nTF32:156/312T*\nFP64:19.5T","category":"nvidia"},
+  {"id":15,"vendor":"NVIDIA","name":"A800 (PCIe)","arch":"Ampere","type":"PCIe","vram":"80GB HBM2e","bandwidth":"2TB/s","interconnect":"PCIe 64GB/s","tdp":"300W","fp16":"FP16:0.3/0.6P*\nTF32:156/312T*\nFP64:19.5T","category":"nvidia"},
+  {"id":16,"vendor":"NVIDIA","name":"L40s","arch":"Ada","type":"PCIe","vram":"48G GDDR6x","bandwidth":"864GB/s","interconnect":"64GB/s","tdp":"350W","fp16":"FP16:366/733T*\nTF32:181/366T*","category":"nvidia"},
+  {"id":17,"vendor":"NVIDIA","name":"L40","arch":"Ada","type":"PCIe","vram":"48G GDDR6x","bandwidth":"864GB/s","interconnect":"64GB/s","tdp":"300W","fp16":"FP16:181/362T*\nTF32:90.5/181T*","category":"nvidia"},
+  {"id":18,"vendor":"NVIDIA","name":"L20","arch":"Ada","type":"PCIe","vram":"48G GDDR6x","bandwidth":"864GB/s","interconnect":"64GB/s","tdp":"275W","fp16":"FP16:119.5T\nTF32:59.8T","category":"nvidia"},
+  {"id":19,"vendor":"NVIDIA","name":"L4","arch":"Ada","type":"PCIe","vram":"24G GDDR6x","bandwidth":"300GB/s","interconnect":"理论64GB/s","tdp":"72W","fp16":"FP16:121/242T*\nTF32:60.5/121T*","category":"nvidia"},
+  {"id":20,"vendor":"NVIDIA","name":"L2","arch":"Ada","type":"PCIe","vram":"24G GDDR6x","bandwidth":"300GB/s","interconnect":"64GB/s","tdp":"72W","fp16":"FP16:96.5T\nTF32:48.3T","category":"nvidia"},
+  {"id":21,"vendor":"NVIDIA","name":"GB200 NVL72","arch":"Blackwell","type":"Rack","vram":"—","bandwidth":"—","interconnect":"NVLink 5.0","tdp":"—","fp16":"FP4:—\nFP8:—\nFP16:—","category":"nvidia"},
+  {"id":22,"vendor":"NVIDIA","name":"HGX B200","arch":"Blackwell","type":"SXM","vram":"—","bandwidth":"—","interconnect":"NVLink 5.0","tdp":"—","fp16":"—","category":"nvidia"},
+  {"id":23,"vendor":"NVIDIA","name":"HGX B100","arch":"Blackwell","type":"SXM","vram":"—","bandwidth":"—","interconnect":"NVLink 5.0","tdp":"—","fp16":"—","category":"nvidia"},
+  {"id":24,"vendor":"NVIDIA","name":"H200 SXM","arch":"Hopper","type":"SXM","vram":"141G HBM3e","bandwidth":"4.8TB/s","interconnect":"NVLink 900GB/s","tdp":"700W","fp16":"—","category":"nvidia"},
+  {"id":25,"vendor":"NVIDIA","name":"H100/H800 SXM","arch":"Hopper","type":"SXM","vram":"80G HBM3","bandwidth":"3.35TB/s","interconnect":"NVLink","tdp":"700W","fp16":"—","category":"nvidia"},
+  {"id":26,"vendor":"NVIDIA","name":"A100/A800 SXM","arch":"Ampere","type":"SXM","vram":"80G HBM2e","bandwidth":"2TB/s","interconnect":"NVLink","tdp":"400W","fp16":"—","category":"nvidia"},
+  {"id":27,"vendor":"NVIDIA","name":"RTX 5090 (SXM)","arch":"Blackwell","type":"SXM","vram":"32G GDDR7","bandwidth":"1.8TB/s","interconnect":"PCIe 128GB/s","tdp":"575W","fp16":"—","category":"nvidia"},
+  {"id":28,"vendor":"NVIDIA","name":"RTX 4090 (SXM)","arch":"Ada","type":"SXM","vram":"24G GDDR6x","bandwidth":"1TB/s","interconnect":"PCIe","tdp":"450W","fp16":"—","category":"nvidia"},
+  {"id":29,"vendor":"NVIDIA","name":"H20 SXM","arch":"Hopper","type":"SXM","vram":"96G HBM3","bandwidth":"4TB/s","interconnect":"NVLink 900GB/s","tdp":"400W","fp16":"—","category":"nvidia"},
+  {"id":30,"vendor":"华为","name":"910B OAM","arch":"昇腾","type":"OAM","vram":"—","bandwidth":"—","interconnect":"—","tdp":"—","fp16":"—","category":"china"},
+  {"id":31,"vendor":"华为","name":"昇腾910C","arch":"昇腾","type":"OAM","vram":"—","bandwidth":"—","interconnect":"—","tdp":"—","fp16":"—","category":"china"},
+  {"id":32,"vendor":"华为","name":"昇腾950","arch":"昇腾","type":"—","vram":"—","bandwidth":"—","interconnect":"—","tdp":"—","fp16":"—","category":"china"},
+  {"id":33,"vendor":"天数智芯","name":"天垓150","arch":"通用GPU","type":"—","vram":"—","bandwidth":"—","interconnect":"—","tdp":"—","fp16":"—","category":"china"},
+  {"id":34,"vendor":"沐曦","name":"云C500 OAM","arch":"通用GPU","type":"OAM","vram":"—","bandwidth":"—","interconnect":"—","tdp":"—","fp16":"—","category":"china"},
+  {"id":35,"vendor":"摩尔线程","name":"S4000 OAM","arch":"MUSA","type":"OAM","vram":"—","bandwidth":"—","interconnect":"—","tdp":"—","fp16":"—","category":"china"},
+  {"id":36,"vendor":"摩尔线程","name":"S5000","arch":"MUSA","type":"—","vram":"—","bandwidth":"—","interconnect":"—","tdp":"—","fp16":"—","category":"china"},
+  {"id":37,"vendor":"海光","name":"BW1000","arch":"通用GPU","type":"—","vram":"—","bandwidth":"—","interconnect":"—","tdp":"—","fp16":"—","category":"china"},
+  {"id":38,"vendor":"燧原","name":"云燧T21 OAM","arch":"通用GPU","type":"OAM","vram":"—","bandwidth":"—","interconnect":"—","tdp":"—","fp16":"—","category":"china"},
+  {"id":39,"vendor":"寒武纪","name":"MLU590","arch":"MLU","type":"—","vram":"—","bandwidth":"—","interconnect":"—","tdp":"—","fp16":"—","category":"china"},
+];
+
+// ==================== 状态 ====================
+let gpuData = [];
+let compareList = [];
+let editMode = false;
+let currentFilter = null;
+let sortCol = null;
+let sortDir = 1;
+let serverConfig = { gpusPerServer: 8, heightU: 4, powerOverhead: 1.15 };
+
+// ==================== Supabase API ====================
+async function supabaseFetch(path, options = {}) {
+  if (!isConfigured()) throw new Error('未配置 Supabase');
+  const url = supabaseConfig.url.replace(/\/$/, '') + '/rest/v1/' + path;
+  const res = await fetch(url, { ...options, headers: { ...getHeaders(), ...(options.headers||{}) } });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error('Supabase 错误: ' + res.status + ' ' + err);
+  }
+  return res;
+}
+
+async function loadFromSupabase() {
+  if (!isConfigured()) {
+    gpuData = JSON.parse(JSON.stringify(DEFAULT_DATA));
+    return;
+  }
+  try {
+    const res = await supabaseFetch('gpus?select=*&order=id.asc');
+    const data = await res.json();
+    if (data.length === 0) {
+      // 首次使用，初始化数据
+      await syncDefaultToSupabase();
+    } else {
+      gpuData = data;
+    }
+  } catch(e) {
+    console.warn('Supabase 加载失败，使用本地缓存:', e.message);
+    if (gpuData.length === 0) gpuData = JSON.parse(JSON.stringify(DEFAULT_DATA));
+  }
+}
+
+async function syncDefaultToSupabase() {
+  try {
+    for (const g of DEFAULT_DATA) {
+      const { id, ...rest } = g;
+      await supabaseFetch('gpus', { method: 'POST', body: JSON.stringify({id, ...rest}) });
+    }
+    gpuData = JSON.parse(JSON.stringify(DEFAULT_DATA));
+    showToast('已初始化云端数据库');
+  } catch(e) {
+    console.warn('初始化云端失败:', e.message);
+    gpuData = JSON.parse(JSON.stringify(DEFAULT_DATA));
+  }
+}
+
+async function saveGPUToSupabase(id, fields) {
+  if (!isConfigured()) { const g = gpuData.find(d=>d.id===id); if(g) Object.assign(g,fields); return; }
+  try {
+    await supabaseFetch('gpus?id=eq.' + id, { method: 'PATCH', body: JSON.stringify(fields) });
+  } catch(e) { console.warn('保存失败:', e.message); }
+}
+
+async function addGPUToSupabase(gpu) {
+  if (!isConfigured()) {
+    const newId = Math.max(...gpuData.map(g=>g.id), 0) + 1;
+    const ng = {id:newId,vendor:'',arch:'',type:'',vram:'—',bandwidth:'—',interconnect:'—',tdp:'—',fp16:'—',category:'nvidia',...gpu};
+    gpuData.push(ng); return ng;
+  }
+  try {
+    const newId = Math.max(...gpuData.map(g=>g.id), 0) + 1;
+    const ng = {id:newId,vendor:'',arch:'',type:'',vram:'—',bandwidth:'—',interconnect:'—',tdp:'—',fp16:'—',category:'nvidia',...gpu};
+    const res = await supabaseFetch('gpus', { method: 'POST', body: JSON.stringify(ng) });
+    const created = await res.json();
+    if (created && created.length > 0) { gpuData.push(created[0]); return created[0]; }
+    gpuData.push(ng); return ng;
+  } catch(e) { console.warn('添加失败:', e.message); return null; }
+}
+
+async function deleteGPUFromSupabase(id) {
+  if (!isConfigured()) { const i=gpuData.findIndex(g=>g.id===id); if(i>=0)gpuData.splice(i,1); return; }
+  try {
+    await supabaseFetch('gpus?id=eq.' + id, { method: 'DELETE' });
+    const i = gpuData.findIndex(g=>g.id===id);
+    if (i>=0) gpuData.splice(i,1);
+  } catch(e) { console.warn('删除失败:', e.message); }
+}
+
+async function resetSupabaseData() {
+  if (!isConfigured()) { gpuData=JSON.parse(JSON.stringify(DEFAULT_DATA)); return; }
+  try {
+    await supabaseFetch('gpus?id=gt.0', { method: 'DELETE' });
+    for (const g of DEFAULT_DATA) {
+      const { id, ...rest } = g;
+      await supabaseFetch('gpus', { method: 'POST', body: JSON.stringify({id,...rest}) });
+    }
+    gpuData = JSON.parse(JSON.stringify(DEFAULT_DATA));
+  } catch(e) { console.warn('重置失败:', e.message); }
+}
+
+async function syncFromSupabase() {
+  if (!isConfigured()) { showToast('请先配置 Supabase 连接'); return; }
+  await loadFromSupabase();
+  refreshUI();
+  showToast('已从云端刷新数据 (' + gpuData.length + ' 条)');
+}
+
+// ==================== 配置弹窗 ====================
+function showSetupModal() {
+  const html = '<div class="modal-overlay" onclick="closeModal()"><div class="modal" onclick="event.stopPropagation()" style="max-width:500px;">'
+    + '<div class="modal-header"><h2>⚙️ Supabase 配置</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>'
+    + '<div class="modal-body">'
+    + '<p style="font-size:13px;color:var(--text2);margin-bottom:16px;">填写你的 Supabase 项目信息，数据将存储在云端数据库中，所有访问者共享同一份数据。</p>'
+    + '<div class="spec-item" style="margin-bottom:12px;"><label>Supabase URL</label><input type="text" id="setupUrl" value="' + (supabaseConfig.url||'') + '" placeholder="https://xxxxx.supabase.co"></div>'
+    + '<div class="spec-item" style="margin-bottom:12px;"><label>anon Key (公开密钥)</label><input type="text" id="setupKey" value="' + (supabaseConfig.anonKey||'') + '" placeholder="eyJhbGciOi..."></div>'
+    + '<div style="font-size:11px;color:var(--text2);margin-bottom:12px;padding:8px;background:var(--bg);border-radius:4px;">'
+    + '💡 <b>如何获取：</b>在 <a href="https://supabase.com" target="_blank" style="color:var(--accent);">supabase.com</a> 注册免费账号 → 创建项目 → Settings → API → 复制 URL 和 anon key</div>'
+    + '<button class="btn btn-primary" onclick="saveConfig()" style="width:100%;">保存并连接</button>'
+    + '</div></div></div>';
+  document.getElementById('modalContainer').innerHTML = html;
+}
+
+async function saveConfig() {
+  supabaseConfig.url = document.getElementById('setupUrl').value.trim();
+  supabaseConfig.anonKey = document.getElementById('setupKey').value.trim();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(supabaseConfig));
+  closeModal();
+  await loadFromSupabase();
+  refreshUI();
+  if (isConfigured()) {
+    document.getElementById('setupBanner').classList.remove('show');
+    showToast('已连接 Supabase (' + gpuData.length + ' 条数据)');
+  }
+}
+
+// ==================== 初始化 ====================
+async function init() {
+  await loadFromSupabase();
+  renderSidebar();
+  renderTable(gpuData);
+  updateCompareBar();
+  updateConnectionBadge();
+  if (!isConfigured()) {
+    document.getElementById('setupBanner').classList.add('show');
+  }
+  document.getElementById('setupBanner').addEventListener('click', showSetupModal);
+  document.getElementById('searchInput').addEventListener('input', handleSearch);
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.dropdown')) document.getElementById('exportMenu').classList.remove('show');
+  });
+  document.addEventListener('keydown', e => { if (e.key==='Escape') closeModal(); });
+  // 每60秒自动同步
+  setInterval(async () => { await loadFromSupabase(); refreshUI(); }, 60000);
+}
+window.addEventListener('DOMContentLoaded', init);
+
+function updateConnectionBadge() {
+  const badge = document.getElementById('gpuCount');
+  if (isConfigured()) {
+    badge.style.background = 'var(--accent2)';
+    badge.title = '已连接 Supabase - 多人共享模式';
+  } else {
+    badge.style.background = 'var(--warn)';
+    badge.title = '未配置 - 仅本地模式';
+  }
+  badge.textContent = gpuData.length + ' GPU';
+}
+
+function refreshUI() {
+  renderSidebar();
+  const filtered = currentFilter ? currentFilter(gpuData) : gpuData;
+  if (document.getElementById('searchInput').value) handleSearch();
+  else renderTable(filtered);
+  updateCompareBar();
+  if (compareList.length >= 2) renderComparePanel();
+  updateConnectionBadge();
+}
+
+// ==================== 侧边栏 ====================
+function renderSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const nvidiaGPUs = gpuData.filter(g => g.category === 'nvidia');
+  const chinaGPUs = gpuData.filter(g => g.category === 'china');
+  let html = '<div class="section-title">NVIDIA GPU (' + nvidiaGPUs.length + ')</div>';
+  nvidiaGPUs.forEach(g => {
+    const inCmp = compareList.includes(g.id);
+    html += '<div class="gpu-item" onclick="showDetail(' + g.id + ')"><span class="dot nvidia"></span>' + g.name + '<span class="cmp-toggle ' + (inCmp?'active':'') + '" onclick="event.stopPropagation();toggleCompare(' + g.id + ')">' + (inCmp?'−':'+') + '</span></div>';
+  });
+  html += '<div class="section-title" style="margin-top:8px;">国产 GPU (' + chinaGPUs.length + ')</div>';
+  chinaGPUs.forEach(g => {
+    const inCmp = compareList.includes(g.id);
+    html += '<div class="gpu-item" onclick="showDetail(' + g.id + ')"><span class="dot china"></span>' + g.name + '<span class="cmp-toggle ' + (inCmp?'active':'') + '" onclick="event.stopPropagation();toggleCompare(' + g.id + ')">' + (inCmp?'−':'+') + '</span></div>';
+  });
+  sidebar.innerHTML = html;
+}
+
+// ==================== 表格 ====================
+function sortTable(col) {
+  if (sortCol===col){sortDir*=-1;}else{sortCol=col;sortDir=1;}
+  document.querySelectorAll('.sort-arrow').forEach(el=>el.textContent='');
+  const arrow = document.getElementById('sort-'+col);
+  if(arrow) arrow.textContent = sortDir===1?'▲':'▼';
+  const filtered = currentFilter ? currentFilter(gpuData) : gpuData;
+  const sorted = [...filtered].sort((a,b)=>{
+    let va=a[col]||'', vb=b[col]||'';
+    if(col==='tdp'){va=parseFloat(va)||0;vb=parseFloat(vb)||0;}
+    else if(col==='bandwidth'){const pa=va.match(/([\d.]+)(TB|GB)/),pb=vb.match(/([\d.]+)(TB|GB)/);va=pa?(pa[2]==='TB'?pa[1]*1000:parseFloat(pa[1])):0;vb=pb?(pb[2]==='TB'?pb[1]*1000:parseFloat(pb[1])):0;}
+    else{va=String(va).toLowerCase();vb=String(vb).toLowerCase();}
+    if(va<vb)return -1*sortDir; if(va>vb)return 1*sortDir; return 0;
+  });
+  renderTable(sorted);
+}
+
+function renderTable(data) {
+  const tbody = document.getElementById('tableBody');
+  if(data.length===0){tbody.innerHTML='<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text2);">未找到匹配的 GPU 数据</td></tr>';document.getElementById('tableInfo').textContent='无匹配结果';return;}
+  tbody.innerHTML = data.map(g=>{
+    const vendorTag = g.vendor==='NVIDIA'?'<span class="tag tag-nvidia">NVIDIA</span>':'<span class="tag tag-china">'+g.vendor+'</span>';
+    const tdpNum=parseFloat(g.tdp);let tdpClass='';if(tdpNum>=500)tdpClass='power-high';else if(tdpNum>=300)tdpClass='perf-mid';
+    const selected=compareList.includes(g.id)?' selected':'';
+    const fp16display=g.fp16.length>60?g.fp16.substring(0,57)+'...':g.fp16;
+    return '<tr class="'+selected+'" ondblclick="showDetail('+g.id+')"><td><span class="gpu-name" onclick="showDetail('+g.id+')">'+g.name+'</span></td><td>'+vendorTag+'</td><td>'+g.arch+'</td><td>'+g.type+'</td><td>'+g.vram+'</td><td>'+g.bandwidth+'</td><td>'+g.interconnect+'</td><td class="'+tdpClass+'">'+g.tdp+'</td><td style="font-size:11px;max-width:280px;white-space:pre-line;">'+fp16display+'</td><td><button class="btn btn-outline btn-sm" onclick="showDetail('+g.id+')" title="详情">🔍</button><button class="btn btn-outline btn-sm" onclick="toggleCompare('+g.id+')">'+(compareList.includes(g.id)?'−':'+')+'</button></td></tr>';
+  }).join('');
+  document.getElementById('tableInfo').textContent='显示 '+data.length+' 条';
+  document.getElementById('gpuCount').textContent=gpuData.length+' GPU';
+}
+
+function handleSearch(){
+  const q=document.getElementById('searchInput').value.toLowerCase();
+  let filtered=currentFilter?currentFilter(gpuData):gpuData;
+  if(q){filtered=filtered.filter(g=>g.name.toLowerCase().includes(q)||g.vendor.toLowerCase().includes(q)||g.arch.toLowerCase().includes(q)||g.type.toLowerCase().includes(q)||g.vram.toLowerCase().includes(q)||g.fp16.toLowerCase().includes(q));}
+  renderTable(filtered);
+}
+
+function showAll(){currentFilter=null;document.getElementById('searchInput').value='';renderTable(gpuData);}
+function filterByVendor(v){currentFilter=(data)=>v==='NVIDIA'?data.filter(g=>g.category==='nvidia'):data.filter(g=>g.category==='china');document.getElementById('searchInput').value='';renderTable(currentFilter(gpuData));}
+function filterByArch(a){currentFilter=(data)=>data.filter(g=>g.arch===a);document.getElementById('searchInput').value='';renderTable(currentFilter(gpuData));}
+
+// ==================== 对比 ====================
+function toggleCompare(id){
+  const idx=compareList.indexOf(id);
+  if(idx>=0){compareList.splice(idx,1);}else{compareList.push(id);}
+  updateCompareBar();renderSidebar();
+  const filtered=currentFilter?currentFilter(gpuData):gpuData;
+  if(document.getElementById('searchInput').value){handleSearch();}else{renderTable(filtered);}
+  if(compareList.length>=2)renderComparePanel();else document.getElementById('cmpPanelContainer').innerHTML='';
+}
+function clearCompare(){compareList=[];updateCompareBar();renderSidebar();renderTable(currentFilter?currentFilter(gpuData):gpuData);document.getElementById('cmpPanelContainer').innerHTML='';}
+function updateCompareBar(){
+  const container=document.getElementById('cmpTags'),placeholder=document.getElementById('cmpPlaceholder');
+  if(compareList.length===0){container.innerHTML='';placeholder.style.display='inline';}
+  else{placeholder.style.display='none';container.innerHTML=compareList.map(id=>{const g=gpuData.find(d=>d.id===id);if(!g)return'';return '<span class="cmp-tag">'+g.name+' <span class="remove" onclick="toggleCompare('+id+')">&times;</span></span>';}).join('');}
+}
+
+function renderComparePanel(){
+  const gpus=compareList.map(id=>gpuData.find(g=>g.id===id)).filter(Boolean);
+  if(gpus.length<2)return;
+  const specs=[{label:'厂商',key:'vendor'},{label:'产品架构',key:'arch'},{label:'产品类型',key:'type'},{label:'显存',key:'vram'},{label:'显存带宽',key:'bandwidth'},{label:'GPU互联',key:'interconnect'},{label:'TDP',key:'tdp'},{label:'单卡算力(FP16)',key:'fp16'}];
+  const serverSpecs=[{label:serverConfig.gpusPerServer+'卡总TDP',fn:(g)=>{const w=parseFloat(g.tdp);return isNaN(w)?'—':(w*serverConfig.gpusPerServer*serverConfig.powerOverhead/1000).toFixed(1)+'kW ('+(serverConfig.powerOverhead*100-100).toFixed(0)+'%冗余)';}},{label:serverConfig.gpusPerServer+'卡FP16算力',fn:(g)=>computePerfEst(g)},{label:'单台高度',fn:(g)=>serverConfig.heightU+'U'},{label:'千P算力需求('+serverConfig.gpusPerServer+'卡机)',fn:(g)=>computeMachinesNeeded(g)}];
+  let html='<div class="cmp-panel"><div class="cmp-panel-header"><h3>🔁 GPU 核心参数对比</h3><span style="font-size:12px;color:var(--text2);">'+gpus.length+' 款 GPU 对比</span></div>';
+  html+='<div style="padding:10px 16px;background:var(--bg);border-bottom:1px solid var(--border);display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:12px;"><span style="color:var(--text2);">⚙️ 服务器参数：</span><label>每机GPU数 <input type="number" value="'+serverConfig.gpusPerServer+'" onchange="updateServerConfig(\'gpusPerServer\',parseInt(this.value))" style="width:56px;background:var(--surface2);border:1px solid var(--border);color:#fff;padding:4px 6px;border-radius:4px;text-align:center;"></label><label>高度(U) <input type="number" value="'+serverConfig.heightU+'" onchange="updateServerConfig(\'heightU\',parseInt(this.value))" style="width:56px;background:var(--surface2);border:1px solid var(--border);color:#fff;padding:4px 6px;border-radius:4px;text-align:center;"></label><label>功率冗余 <input type="number" value="'+(serverConfig.powerOverhead*100-100).toFixed(0)+'" onchange="updateServerConfig(\'powerOverhead\',1+parseFloat(this.value)/100)" style="width:56px;background:var(--surface2);border:1px solid var(--border);color:#fff;padding:4px 6px;border-radius:4px;text-align:center;">%</label></div>';
+  html+='<div class="cmp-grid" style="overflow-x:auto;"><div class="cmp-row" style="grid-template-columns:140px repeat('+gpus.length+', 1fr);"><div class="cmp-cell header">参数</div>';
+  gpus.forEach(g=>{html+='<div class="cmp-cell header" style="font-size:14px;color:#fff;">'+g.vendor+' '+g.name+'</div>';});html+='</div>';
+  specs.forEach(spec=>{html+='<div class="cmp-row" style="grid-template-columns:140px repeat('+gpus.length+', 1fr);"><div class="cmp-cell header">'+spec.label+'</div>';let bestIdx=-1;
+    if(spec.key==='tdp'){const vals=gpus.map(g=>parseFloat(g.tdp)||Infinity);bestIdx=vals.indexOf(Math.min(...vals));}
+    else if(spec.key==='bandwidth'){const vals=gpus.map(g=>{const m=g.bandwidth.match(/([\d.]+)(TB|GB)/);return m?(m[2]==='TB'?m[1]*1000:parseFloat(m[1])):0;});bestIdx=vals.indexOf(Math.max(...vals));}
+    gpus.forEach((g,i)=>{const cls=i===bestIdx&&bestIdx>=0&&gpus.length>1?' cmp-cell best':'cmp-cell';const display=spec.key==='fp16'?g[spec.key].replace(/\n/g,'<br>'):g[spec.key];html+='<div class="'+cls+'" style="font-size:11px;">'+display+'</div>';});html+='</div>';});
+  serverSpecs.forEach(spec=>{html+='<div class="cmp-row" style="grid-template-columns:140px repeat('+gpus.length+', 1fr);"><div class="cmp-cell header">'+spec.label+'</div>';gpus.forEach(g=>{html+='<div class="cmp-cell" style="font-size:12px;color:var(--warn);">'+spec.fn(g)+'</div>';});html+='</div>';});
+  html+='</div></div>';document.getElementById('cmpPanelContainer').innerHTML=html;
+}
+
+function computePerfEst(g){const fp16=g.fp16;if(fp16.includes('P*')||fp16.includes('1/2P'))return '>1P FLOPS ('+serverConfig.gpusPerServer+'卡)';const match=fp16.match(/FP16[：:]\s*([\d.]+)T/);if(match){const totalT=parseFloat(match[1])*serverConfig.gpusPerServer;return totalT>=1000?(totalT/1000).toFixed(1)+'P FLOPS':totalT.toFixed(0)+'T FLOPS';}return '—';}
+function computeMachinesNeeded(g){const fp16=g.fp16;if(fp16.includes('P*')||fp16.includes('1/2P'))return '约 1 台';const match=fp16.match(/FP16[：:]\s*([\d.]+)T/);if(match){const totalT=parseFloat(match[1])*serverConfig.gpusPerServer;if(totalT>0)return '约 '+Math.ceil(1000/totalT)+' 台';}return '数据不足';}
+function updateServerConfig(key,value){if(isNaN(value)||value<=0)return;serverConfig[key]=value;if(compareList.length>=2)renderComparePanel();}
+
+// ==================== 详情弹窗 ====================
+function showDetail(id){
+  const g=gpuData.find(d=>d.id===id);if(!g)return;
+  const vendorTag=g.vendor==='NVIDIA'?'<span class="tag tag-nvidia">NVIDIA</span>':'<span class="tag tag-china">'+g.vendor+'</span>';
+  const inCmp=compareList.includes(id);
+  let html='<div class="modal-overlay" onclick="closeModal()"><div class="modal" onclick="event.stopPropagation()"><div class="modal-header"><h2>'+g.name+' '+vendorTag+'</h2><div style="display:flex;gap:8px;"><button class="btn btn-outline btn-sm" onclick="toggleCompare('+id+');renderModalDetail('+id+');">'+(inCmp?'移出对比':'加入对比')+'</button><button class="btn btn-danger btn-sm" onclick="deleteGPU('+id+')">🗑 删除</button><button class="modal-close" onclick="closeModal()">&times;</button></div></div><div class="modal-body" id="modalBody">'+renderDetailContent(g)+'</div></div></div>';
+  document.getElementById('modalContainer').innerHTML=html;
+}
+function renderDetailContent(g){
+  const fields=[{label:'厂商',key:'vendor'},{label:'GPU 型号',key:'name'},{label:'产品架构',key:'arch'},{label:'产品类型',key:'type'},{label:'显存',key:'vram'},{label:'显存带宽',key:'bandwidth'},{label:'GPU 互联',key:'interconnect'},{label:'TDP',key:'tdp'},{label:'单卡算力 (FP16)',key:'fp16',full:true}];
+  let html='<div class="spec-grid">';
+  fields.forEach(f=>{const cls=f.full?'spec-item full':'spec-item';
+    if(editMode){html+='<div class="'+cls+'"><label>'+f.label+'</label>';if(f.key==='fp16'){html+='<textarea onchange="updateGPU('+g.id+',\''+f.key+'\',this.value)">'+g[f.key]+'</textarea>';}else{html+='<input type="text" value="'+g[f.key].replace(/"/g,'&quot;')+'" onchange="updateGPU('+g.id+',\''+f.key+'\',this.value)">';}html+='</div>';}
+    else{html+='<div class="'+cls+'"><label>'+f.label+'</label><div class="value" style="'+(f.key==='fp16'?'white-space:pre-line;font-size:13px;':'')+'">'+g[f.key]+'</div></div>';}});
+  const tdpW=parseFloat(g.tdp);
+  if(!isNaN(tdpW)){html+='<div class="spec-item"><label>'+serverConfig.gpusPerServer+'卡服务器总TDP ('+(serverConfig.powerOverhead*100-100).toFixed(0)+'%冗余)</label><div class="value" style="color:var(--warn);">'+(tdpW*serverConfig.gpusPerServer*serverConfig.powerOverhead/1000).toFixed(1)+' kW</div></div><div class="spec-item"><label>千P算力需求 '+serverConfig.gpusPerServer+'卡机数量</label><div class="value" style="color:var(--accent2);">'+computeMachinesNeeded(g)+'</div></div><div class="spec-item"><label>单台服务器高度</label><div class="value">'+serverConfig.heightU+'U</div></div>';}
+  html+='</div>';return html;
+}
+function renderModalDetail(id){const g=gpuData.find(d=>d.id===id);if(!g)return;document.getElementById('modalBody').innerHTML=renderDetailContent(g);}
+function updateGPU(id,key,value){const g=gpuData.find(d=>d.id===id);if(g){g[key]=value;savedGPUToSupabase(id,{[key]:value});renderModalDetail(id);const filtered=currentFilter?currentFilter(gpuData):gpuData;if(document.getElementById('searchInput').value){handleSearch();}else{renderTable(filtered);}renderSidebar();if(compareList.length>=2)renderComparePanel();updateCompareBar();showToast('已更新 '+g.name+' 的 '+key);}}
+async function savedGPUToSupabase(id,fields){if(!isConfigured())return;try{await supabaseFetch('gpus?id=eq.'+id,{method:'PATCH',body:JSON.stringify(fields)});}catch(e){console.warn('保存失败:',e);}}
+function closeModal(){document.getElementById('modalContainer').innerHTML='';}
+async function showAddGPUModal(){const name=prompt('请输入 GPU 型号名称：');if(!name||!name.trim())return;const vendor=prompt('请输入厂商（如 NVIDIA、华为）：')||'';const ng=await addGPUToSupabase({name:name.trim(),vendor:vendor.trim(),arch:'',type:'',fp16:'—'});if(!ng){showToast('添加失败');return;}renderSidebar();const filtered=currentFilter?currentFilter(gpuData):gpuData;renderTable(filtered);showToast('已添加 '+name);}
+async function deleteGPU(id){const g=gpuData.find(d=>d.id===id);if(!g)return;if(!confirm('确定要删除 '+g.vendor+' '+g.name+' 吗？'))return;const cmpIdx=compareList.indexOf(id);if(cmpIdx>=0)compareList.splice(cmpIdx,1);await deleteGPUFromSupabase(id);closeModal();renderSidebar();const filtered=currentFilter?currentFilter(gpuData):gpuData;renderTable(filtered);updateCompareBar();if(compareList.length>=2)renderComparePanel();else document.getElementById('cmpPanelContainer').innerHTML='';showToast('已删除 '+g.name);}
+
+// ==================== 编辑模式 ====================
+function toggleEditMode(){editMode=!editMode;const btn=document.getElementById('editBtn'),indicator=document.getElementById('editIndicator');if(editMode){btn.textContent='✅ 退出编辑';btn.className='btn btn-primary btn-sm';indicator.classList.add('on');}else{btn.textContent='✏️ 编辑模式';btn.className='btn btn-outline btn-sm';indicator.classList.remove('on');}const modalBody=document.getElementById('modalBody');if(modalBody){const gpuName=document.querySelector('.modal-header h2');if(gpuName){const g=gpuData.find(d=>gpuName.textContent.includes(d.name));if(g)renderModalDetail(g.id);}}showToast(editMode?'编辑模式已开启 - 修改将同步到云端':'编辑模式已关闭');}
+
+// ==================== Toast ====================
+function showToast(msg){const container=document.getElementById('toastContainer');const toast=document.createElement('div');toast.className='toast';toast.textContent=msg;container.appendChild(toast);setTimeout(()=>{toast.remove();},2000);}
+
+// ==================== 导出 ====================
+function exportJSON(){const blob=new Blob([JSON.stringify(gpuData,null,2)],{type:'application/json'});downloadBlob(blob,'gpu-server-data.json');showToast('已导出 JSON');}
+function exportCSV(){const headers=['厂商','GPU型号','产品架构','产品类型','显存','显存带宽','GPU互联','TDP','单卡算力FP16'];const rows=gpuData.map(g=>[g.vendor,g.name,g.arch,g.type,g.vram,g.bandwidth,g.interconnect,g.tdp,g.fp16.replace(/\n/g,' | ')]);const csv=[headers.join(','),...rows.map(r=>r.map(c=>'"'+c+'"').join(','))].join('\n');const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8;'});downloadBlob(blob,'gpu-server-data.csv');showToast('已导出 CSV');}
+function downloadBlob(blob,filename){const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);}
+async function resetData(){if(confirm('确定要恢复为默认数据吗？所有修改将丢失。')){await resetSupabaseData();compareList=[];editMode=false;document.getElementById('editBtn').textContent='✏️ 编辑模式';document.getElementById('editBtn').className='btn btn-outline btn-sm';document.getElementById('editIndicator').classList.remove('on');refreshUI();document.getElementById('cmpPanelContainer').innerHTML='';document.getElementById('searchInput').value='';currentFilter=null;showToast('已恢复默认数据');}}
+</script>
+</body>
+</html>
