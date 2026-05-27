@@ -1,0 +1,12 @@
+name: Keep Supabase Alive
+on:
+  schedule:
+    - cron: '0 0 */5 * *'
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          curl -s "https://xgjojrmmfijpfukuigdu.supabase.co/rest/v1/gpus?select=id&limit=1" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhnam9qcm1tZmlqcGZ1a3VpZ2R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3Nzk0NzMsImV4cCI6MjA5NTM1NTQ3M30.M7_sZpnY77lZrmlvaOFwwrnbFtZLg1wO9E-iI5W1jg0" \
+            -o /dev/null
