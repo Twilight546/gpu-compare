@@ -1,0 +1,30 @@
+name: Supabase Backup (Every 3 Days)
+
+on:
+  schedule:
+    - cron: '30 8 */3 * *'   # 每 3 天 UTC 08:30 执行
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch data from Supabase
+        run: |
+          mkdir -p backups
+          TS=$(date +%Y-%m-%d-%H%M --utc)
+          curl -s "https://xgjojrmmfijpfukuigdu.supabase.co/rest/v1/gpus?select=*&order=id.asc" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhnam9qcm1tZmlqcGZ1a3VpZ2R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3Nzk0NzMsImV4cCI6MjA5NTM1NTQ3M30.M7_sZpnY77lZrmlvaOFwwrnbFtZLg1wO9E-iI5W1jg0" \
+            > "backups/backup-${TS}.json"
+
+      - name: Commit and push
+        run: |
+          git config user.name "Backup Bot"
+          git config user.email "backup@bot.local"
+          git add backups/
+          git commit -m "Backup $(date +%Y-%m-%d-%H%M --utc)" || true
+          git push origin HEAD
